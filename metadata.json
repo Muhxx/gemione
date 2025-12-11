@@ -1,0 +1,7 @@
+{
+  "name": "CcDesign Particles",
+  "description": "Interactive 3D particle system controlled by hand gestures via webcam. Transform shapes between Christmas themes, text, and planets.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
