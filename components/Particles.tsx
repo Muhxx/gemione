@@ -23,6 +23,15 @@ const Particles: React.FC<ParticlesProps> = ({ shape, color, handFactor, isHandD
   
   // Velocities for physics feel
   const velocities = useRef<Float32Array>(new Float32Array(PARTICLE_COUNT * 3));
+  
+  // Random offsets for diffusion effect
+  const randomOffsets = useMemo(() => {
+    const offsets = new Float32Array(PARTICLE_COUNT * 3);
+    for(let i=0; i<PARTICLE_COUNT * 3; i++) {
+        offsets[i] = (Math.random() - 0.5) * 2; // -1 to 1
+    }
+    return offsets;
+  }, []);
 
   const particleColor = useMemo(() => new THREE.Color(color), [color]);
 
@@ -46,47 +55,53 @@ const Particles: React.FC<ParticlesProps> = ({ shape, color, handFactor, isHandD
     
     // Smooth the hand factor input
     const smoothedFactor = THREE.MathUtils.lerp(0, handFactor, 0.1); 
-    const spread = isHandDetected ? 0.2 + (handFactor * 2.0) : 0.2; // Base spread + hand influence
-    const noiseAmp = isHandDetected ? (handFactor * 0.5) : 0.1; // More jitter when open
+    const spread = isHandDetected ? smoothedFactor : 0; // 0 to 1
+    
+    // Config
+    const baseScale = 1.0;
+    const maxScale = 1.8;
+    const currentScale = THREE.MathUtils.lerp(baseScale, maxScale, spread);
+    
+    const noiseAmp = isHandDetected ? (spread * 0.2) : 0.05; // Jitter amount
+    const diffusionRadius = isHandDetected ? (spread * 3.0) : 0; // Scatter distance
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const i3 = i * 3;
       
-      // 1. Calculate Attraction Force to Target
-      const tx = target[i3];
-      const ty = target[i3 + 1];
-      const tz = target[i3 + 2];
+      // 1. Target with Scale
+      const tx = target[i3] * currentScale;
+      const ty = target[i3 + 1] * currentScale;
+      const tz = target[i3 + 2] * currentScale;
 
-      // Current
+      // 2. Add Diffusion (Push away from center or random scatter)
+      // We use the pre-calculated random offsets scaled by diffusionRadius
+      const dx = randomOffsets[i3] * diffusionRadius;
+      const dy = randomOffsets[i3 + 1] * diffusionRadius;
+      const dz = randomOffsets[i3 + 2] * diffusionRadius;
+
+      const targetX = tx + dx;
+      const targetY = ty + dy;
+      const targetZ = tz + dz;
+
+      // Current pos
       const cx = currentPositions.current[i3];
       const cy = currentPositions.current[i3 + 1];
       const cz = currentPositions.current[i3 + 2];
 
       // Physics: Spring/Lerp towards target
-      // If hand is OPEN, we expand the target positions (Scale)
-      // And we add noise (Diffusion)
-      
-      const expansion = 1 + (isHandDetected ? handFactor * 0.8 : 0);
-      
-      const targetX = tx * expansion;
-      const targetY = ty * expansion;
-      const targetZ = tz * expansion;
-
-      // Move current towards target
-      // Speed factor
-      const speed = 0.05;
+      const speed = 0.08;
       
       currentPositions.current[i3] += (targetX - cx) * speed;
       currentPositions.current[i3 + 1] += (targetY - cy) * speed;
       currentPositions.current[i3 + 2] += (targetZ - cz) * speed;
 
-      // Add Noise / Diffusion (Breathing effect)
-      const noise = Math.sin(time * 2 + i) * noiseAmp;
+      // Add slight breathing noise
+      const breathing = Math.sin(time * 2 + i * 0.1) * noiseAmp;
       
       // Update the actual geometry buffer
-      positions[i3] = currentPositions.current[i3] + noise;
-      positions[i3 + 1] = currentPositions.current[i3 + 1] + noise;
-      positions[i3 + 2] = currentPositions.current[i3 + 2] + noise;
+      positions[i3] = currentPositions.current[i3] + breathing;
+      positions[i3 + 1] = currentPositions.current[i3 + 1] + breathing;
+      positions[i3 + 2] = currentPositions.current[i3 + 2] + breathing;
     }
 
     pointsRef.current.geometry.attributes.position.needsUpdate = true;
@@ -106,7 +121,7 @@ const Particles: React.FC<ParticlesProps> = ({ shape, color, handFactor, isHandD
         />
       </bufferGeometry>
       <pointsMaterial
-        size={0.15}
+        size={0.12}
         color={particleColor}
         transparent
         opacity={0.8}
